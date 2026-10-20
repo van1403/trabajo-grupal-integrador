@@ -3,13 +3,18 @@ const cors = require('cors');
 const pool = require('./db');
 
 const app = express();
-const frontendOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map((origin) => origin.trim());
+const frontendOrigins = new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  ...(process.env.FRONTEND_ORIGIN || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]);
 
 app.use(cors({
   origin(origin, callback) {
-    callback(null, !origin || frontendOrigins.includes(origin));
+    callback(null, !origin || frontendOrigins.has(origin));
   },
 }));
 app.use(express.json());
