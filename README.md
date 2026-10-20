@@ -16,10 +16,13 @@ Las dependencias directas y los comandos del backend se encuentran en [`backend/
 ```text
 backend/
 ├── src/
-│   ├── app.js       # Aplicación Express y rutas HTTP
-│   ├── db.js        # Pool y configuración de MySQL
-│   └── server.js    # Carga del entorno e inicio del servidor
+│   ├── app.js          # Aplicación Express, CORS y montaje de rutas
+│   ├── db.js           # Pool y configuración de MySQL
+│   ├── routes/
+│   │   └── usuarios.js # Operaciones CRUD de usuarios
+│   └── server.js       # Carga del entorno e inicio del servidor
 ├── .env.example     # Plantilla de configuración local
+├── database.sql      # Creación de la base y tabla
 ├── package.json
 └── package-lock.json
 ```
@@ -41,16 +44,13 @@ CREATE DATABASE IF NOT EXISTS senati_integrador;
 USE senati_integrador;
 
 CREATE TABLE IF NOT EXISTS usuarios (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(100) NOT NULL,
-  correo VARCHAR(150) NOT NULL UNIQUE
+  correo VARCHAR(100) NOT NULL
 );
-
-INSERT IGNORE INTO usuarios (nombre, correo)
-VALUES ('Ana Pérez', 'ana@example.com');
 ```
 
-El último comando crea un registro de ejemplo para probar la API.
+El mismo script está disponible en [`backend/database.sql`](./backend/database.sql). No inserta registros de prueba.
 
 ### 2. Configurar las variables de entorno
 
@@ -73,6 +73,12 @@ DB_NAME=senati_integrador
 
 Si tu usuario MySQL no tiene contraseña, deja `DB_PASSWORD=` vacío. No compartas ni subas `.env`: contiene configuración privada y está excluido del repositorio por `.gitignore`.
 
+Para llamadas desde una aplicación React en desarrollo, el backend permite por defecto el origen de Vite `http://localhost:5173`. Si el frontend usa otro origen, agrega `FRONTEND_ORIGIN` a `.env`. Se pueden indicar varios separados por comas:
+
+```dotenv
+FRONTEND_ORIGIN=http://localhost:5173,http://localhost:3001
+```
+
 ### 3. Instalar y ejecutar
 
 Desde `backend/`:
@@ -84,9 +90,55 @@ npm start
 
 El servidor queda disponible en `http://localhost:3000`. Para desarrollo con reinicio automático al guardar cambios, ejecuta `npm run dev`.
 
-## API disponible
+## API de usuarios
 
-### Consultar un usuario
+Todas las rutas usan la base `http://localhost:3000/api/usuarios` y reciben/devuelven JSON. Los errores tienen la forma `{"error":"..."}`. La API responde `400` si el ID o los campos requeridos no son válidos, `404` si el ID no existe y `500` si falla una operación de base de datos.
+
+### Crear un usuario
+
+```http
+POST /api/usuarios
+Content-Type: application/json
+```
+
+Entrada:
+
+```json
+{
+  "nombre": "Ana Pérez",
+  "correo": "ana@example.com"
+}
+```
+
+Respuesta `201 Created`:
+
+```json
+{
+  "id": 1,
+  "nombre": "Ana Pérez",
+  "correo": "ana@example.com"
+}
+```
+
+### Listar usuarios
+
+```http
+GET /api/usuarios
+```
+
+Respuesta `200 OK`: un arreglo de usuarios; si no hay registros, devuelve `[]`.
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Ana Pérez",
+    "correo": "ana@example.com"
+  }
+]
+```
+
+### Consultar un usuario por ID
 
 ```http
 GET /api/usuarios/:id
@@ -106,17 +158,60 @@ Respuesta exitosa (`200 OK`):
 
 La API valida que `id` sea un entero positivo seguro (`400 Bad Request` si no es válido) y responde `404 Not Found` si no hay un usuario con ese identificador.
 
+### Actualizar un usuario
+
+```http
+PUT /api/usuarios/:id
+Content-Type: application/json
+```
+
+Envía ambos campos:
+
+```json
+{
+  "nombre": "Ana Pérez actualizada",
+  "correo": "ana.actualizada@example.com"
+}
+```
+
+Respuesta `200 OK`: el usuario actualizado, incluyendo su `id`.
+
+### Eliminar un usuario
+
+```http
+DELETE /api/usuarios/:id
+```
+
+No requiere body. Respuesta `200 OK`:
+
+```json
+{
+  "mensaje": "Usuario eliminado."
+}
+```
+
+### Consumo desde React
+
+Con CORS configurado, el frontend puede llamar al backend directamente. Ejemplo para listar:
+
+```js
+const response = await fetch('http://localhost:3000/api/usuarios');
+if (!response.ok) throw new Error('No se pudieron cargar los usuarios');
+const usuarios = await response.json();
+```
+
+Para crear o actualizar, envía `Content-Type: application/json` y `body: JSON.stringify({ nombre, correo })`. Para eliminar, envía `DELETE` a la URL que termina en el ID.
+
 ## Flujo de la consulta
 
-1. Express recibe la petición y extrae el identificador de la ruta.
-2. La aplicación valida el valor antes de consultar.
-3. El pool configurado en `src/db.js` reutiliza conexiones al servidor MySQL.
-4. La ruta usa `pool.execute('SELECT id, nombre, correo FROM usuarios WHERE id = ?', [id])`. El parámetro se envía separado del SQL y se enlaza al marcador `?`; no se concatena directamente en la consulta.
-5. Express devuelve el registro como JSON. Si falla la consulta, el servidor registra el error y responde `500 Internal Server Error`.
+1. Express recibe la petición, aplica CORS y procesa JSON.
+2. La ruta valida los campos o el ID según la operación.
+3. El pool compartido de `src/db.js` ejecuta SQL parametrizado mediante `pool.execute`.
+4. Express devuelve el resultado o un error JSON con el código HTTP correspondiente.
 
 ## Notas de seguridad y operación
 
 - Configura credenciales propias en `.env`; no escribas contraseñas en el código ni las publiques.
 - Usa un usuario MySQL con los permisos mínimos necesarios para la aplicación, en vez de `root` en un entorno compartido o de producción.
 - El pool admite hasta 10 conexiones simultáneas y se cierra al detener el servidor con `Ctrl+C` o una señal de terminación.
-- La ruta raíz `/` no está definida; la ruta implementada es `/api/usuarios/:id`.
+- La ruta raíz `/` no está definida; el recurso de usuarios está bajo `/api/usuarios`.

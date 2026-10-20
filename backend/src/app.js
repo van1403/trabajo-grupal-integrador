@@ -1,9 +1,20 @@
 const express = require('express');
+const cors = require('cors');
 const pool = require('./db');
 
 const app = express();
+const frontendOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim());
 
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || frontendOrigins.includes(origin));
+  },
+}));
 app.use(express.json());
+
+const usuariosRouter = require('./routes/usuarios');
 
 app.get('/api/usuarios/:id', async (req, res, next) => {
   const { id } = req.params;
@@ -27,6 +38,8 @@ app.get('/api/usuarios/:id', async (req, res, next) => {
     return next(error);
   }
 });
+
+app.use('/api/usuarios', usuariosRouter);
 
 app.use((error, req, res, next) => {
   console.error('Error al procesar la solicitud:', error);

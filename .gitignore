@@ -1,4 +1,4 @@
-# Dependencias de Node.js
+const express = require('express');a group project (React + Node.js + Express + MySQL). I'm on Activity 3: user CRUD operations. Check the backend/src folder first to see how the connection to MySQL (mysql2/promise) is made and what the main file of the server is.
 node_modules/
 frontend/node_modules/
 backend/node_modules/
